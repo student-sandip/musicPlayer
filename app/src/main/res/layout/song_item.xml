@@ -1,33 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="12dp"
+    android:paddingVertical="12dp"
     android:clickable="true"
     android:focusable="true"
-    android:background="?attr/selectableItemBackground">
+    android:background="?attr/selectableItemBackground"> <View
+    android:id="@+id/view_selected_indicator"
+    android:layout_width="4dp"
+    android:layout_height="0dp"
+    android:background="#1DB954" android:visibility="gone" app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintTop_toTopOf="parent"
+    app:layout_constraintBottom_toBottomOf="parent" />
 
     <TextView
-        android:id="@+id/tv_song_title_item"
-        android:layout_width="match_parent"
+        android:id="@+id/tv_song_item_title"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="8dp"
         android:textSize="18sp"
         android:textStyle="bold"
         android:textColor="@android:color/white"
         android:singleLine="true"
         android:ellipsize="end"
-        tools:text="Song Title Here - Long Title Example That Should Be Ellipsized" />
+        app:layout_constraintStart_toEndOf="@+id/view_selected_indicator" app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/btn_song_options" tools:text="Song Title Here - Long Title Example That Should Be Ellipsized" />
 
     <TextView
-        android:id="@+id/tv_song_artist_item"
-        android:layout_width="match_parent"
+        android:id="@+id/tv_song_item_artist"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="8dp"
         android:textSize="14sp"
-        android:textColor="#BBBBBB"
-        android:singleLine="true"
+        android:textColor="#B3B3B3" android:singleLine="true"
         android:ellipsize="end"
-        tools:text="Artist Name Here - Featuring Someone Else" />
+        app:layout_constraintStart_toEndOf="@+id/view_selected_indicator" app:layout_constraintTop_toBottomOf="@id/tv_song_item_title" app:layout_constraintEnd_toStartOf="@+id/btn_song_options" tools:text="Artist Name Here - Featuring Someone Else" />
 
-</LinearLayout>
+    <androidx.appcompat.widget.AppCompatImageButton
+        android:id="@+id/btn_song_options"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@drawable/ic_more_vert_white_24dp" android:background="?attr/selectableItemBackgroundBorderless" android:contentDescription="Song options"
+        app:tint="#B3B3B3" android:padding="12dp"
+        app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" /> </androidx.constraintlayout.widget.ConstraintLayout>

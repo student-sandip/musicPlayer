@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.PorterDuff;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -16,7 +17,9 @@ import android.os.IBinder;
 import android.provider.MediaStore;
 import android.text.format.DateUtils;
 import android.util.Log;
+import android.view.MenuItem; // For PopupMenu
 import android.widget.ImageButton;
+import android.widget.PopupMenu; // For PopupMenu
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,6 +27,7 @@ import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.AppCompatImageButton; // Use this for tinting
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
@@ -34,7 +38,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit; // Not strictly needed, DateUtils is used
 
 public class MainActivity extends AppCompatActivity implements MusicService.OnSongChangedListener {
 
@@ -47,12 +50,16 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
     private boolean isBound = false;
 
     private TextView tvSongTitle, tvSongArtist, tvCurrentTime, tvTotalTime;
-    private ImageButton btnPlayPause, btnNext, btnPrevious;
+    private AppCompatImageButton btnPlayPause, btnNext, btnPrevious, btnShuffle, btnRepeat, btnTimer, btnSettingsMenu;
     private SeekBar seekBarProgress;
 
     // Handler for updating seekbar and time
     private Handler handler = new Handler();
     private Runnable updateSeekBarRunnable;
+
+    // Colors for active/inactive state of shuffle/repeat buttons
+    private final int COLOR_ACTIVE = 0xFF1DB954; // Spotify green-like
+    private final int COLOR_INACTIVE = 0xFFB3B3B3; // Light grey
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,6 +76,12 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
         btnNext = findViewById(R.id.btn_next);
         btnPrevious = findViewById(R.id.btn_previous);
         seekBarProgress = findViewById(R.id.seekbar_progress);
+
+        // New UI components for shuffle, repeat, timer, and settings
+        btnShuffle = findViewById(R.id.btn_shuffle);
+        btnRepeat = findViewById(R.id.btn_repeat);
+        btnTimer = findViewById(R.id.btn_timer);
+        btnSettingsMenu = findViewById(R.id.btn_settings_menu); // This is in the header_layout
 
         recyclerViewSongs = findViewById(R.id.recyclerView_songs);
         recyclerViewSongs.setLayoutManager(new LinearLayoutManager(this));
@@ -127,6 +140,30 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
             }
         });
 
+        // New listeners for Shuffle, Repeat, Timer, and Settings
+        btnShuffle.setOnClickListener(v -> {
+            if (musicService != null) {
+                musicService.toggleShuffle();
+                updateShuffleButtonState(); // Update UI immediately
+            }
+        });
+
+        btnRepeat.setOnClickListener(v -> {
+            if (musicService != null) {
+                musicService.toggleRepeat(); // MusicService will cycle through repeat modes
+                updateRepeatButtonState(); // Update UI immediately
+            }
+        });
+
+        btnTimer.setOnClickListener(v -> {
+            // In a full app, you'd show a dialog here for timer options (e.g., 15min, 30min, 1hr)
+            Toast.makeText(this, "Sleep Timer: Feature coming soon! (Will open a timer dialog)", Toast.LENGTH_SHORT).show();
+        });
+
+        btnSettingsMenu.setOnClickListener(v -> {
+            showSettingsMenu(v);
+        });
+
         seekBarProgress.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -178,12 +215,14 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
                 musicService.setSongList(songList);
             }
 
-            // Update UI with current song info if service is already playing
+            // Update UI with current song info and control states if service is already active
             Song currentSong = musicService.getCurrentSong();
             if (currentSong != null) {
                 onSongChanged(currentSong, musicService.isPlaying());
-                // The seekbar updates will be started by onPlaybackStateChanged if musicService.isPlaying() is true
             }
+            // Update shuffle/repeat button states from the service
+            updateShuffleButtonState();
+            updateRepeatButtonState();
         }
 
         @Override
@@ -249,8 +288,6 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
             int titleColumn = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE);
             int artistColumn = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST);
             int durationColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION);
-            // DATA column is deprecated for direct access on Android 10+, use content URI instead for MediaPlayer
-            // int dataColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATA);
 
             do {
                 long id = cursor.getLong(idColumn);
@@ -283,6 +320,10 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
             tvSongArtist.setText(song.getArtist());
             seekBarProgress.setMax((int) song.getDuration());
             tvTotalTime.setText(formatDuration(song.getDuration()));
+            // Highlight the current song in the list
+            int currentSongIndex = songList.indexOf(song);
+            songAdapter.setSelectedPosition(currentSongIndex);
+            recyclerViewSongs.scrollToPosition(currentSongIndex);
         } else {
             tvSongTitle.setText("No song playing");
             tvSongArtist.setText("Artist");
@@ -290,6 +331,7 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
             seekBarProgress.setMax(0);
             tvCurrentTime.setText("0:00");
             tvTotalTime.setText("0:00");
+            songAdapter.setSelectedPosition(-1); // No song selected
         }
         onPlaybackStateChanged(isPlaying); // Update play/pause button immediately
     }
@@ -307,8 +349,9 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
 
     @Override
     public void onProgressUpdate(int currentPosition, int duration) {
-        seekBarProgress.setProgress(currentPosition);
-        tvCurrentTime.setText(formatDuration(currentPosition));
+        // This callback from service might not be strictly needed if using the Handler Runnable for seekbar
+        // But it's good for precise updates if needed, or if service has its own timer.
+        // For now, we rely on the Runnable in MainActivity for seekbar updates.
     }
     //endregion
 
@@ -316,7 +359,6 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
     private String formatDuration(long milliseconds) {
         return DateUtils.formatElapsedTime(milliseconds / 1000);
     }
-
 
     //region SeekBar Updates
     private void startSeekBarUpdates() {
@@ -341,6 +383,76 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
     }
     //endregion
 
+    //region New Feature UI Update Methods
+
+    /**
+     * Updates the UI for the shuffle button based on MusicService's state.
+     */
+    private void updateShuffleButtonState() {
+        if (musicService != null) {
+            if (musicService.isShuffleEnabled()) {
+                btnShuffle.setColorFilter(COLOR_ACTIVE, PorterDuff.Mode.SRC_IN);
+            } else {
+                btnShuffle.setColorFilter(COLOR_INACTIVE, PorterDuff.Mode.SRC_IN);
+            }
+        }
+    }
+
+    /**
+     * Updates the UI for the repeat button based on MusicService's state.
+     * Cycles through: REPEAT_OFF, REPEAT_ALL, REPEAT_ONE.
+     */
+    private void updateRepeatButtonState() {
+        if (musicService != null) {
+            int repeatMode = musicService.getRepeatMode();
+            switch (repeatMode) {
+                case MusicService.REPEAT_OFF:
+                    btnRepeat.setColorFilter(COLOR_INACTIVE, PorterDuff.Mode.SRC_IN);
+                    btnRepeat.setImageResource(R.drawable.ic_repeat_white_24dp);
+                    break;
+                case MusicService.REPEAT_ALL:
+                    btnRepeat.setColorFilter(COLOR_ACTIVE, PorterDuff.Mode.SRC_IN);
+                    btnRepeat.setImageResource(R.drawable.ic_repeat_white_24dp);
+                    break;
+                case MusicService.REPEAT_ONE:
+                    btnRepeat.setColorFilter(COLOR_ACTIVE, PorterDuff.Mode.SRC_IN);
+                    btnRepeat.setImageResource(R.drawable.ic_repeat_one_white_24dp); // Requires a different icon for "repeat one"
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Shows the settings menu as a PopupMenu attached to the settings button.
+     */
+    private void showSettingsMenu(android.view.View anchorView) {
+        PopupMenu popup = new PopupMenu(this, anchorView);
+        // Inflate the menu from a menu XML file
+        popup.getMenuInflater().inflate(R.menu.settings_menu, popup.getMenu());
+
+        popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem item) {
+                int id = item.getItemId();
+                if (id == R.id.action_toggle_theme) {
+                    Toast.makeText(MainActivity.this, "Theme Toggle Clicked! (Implement light/dark mode logic)", Toast.LENGTH_SHORT).show();
+                    // Example: Implement logic to switch app theme (requires styling setup)
+                    // getDelegate().setLocalNightMode(AppCompatDelegate.MODE_NIGHT_YES); // Or MODE_NIGHT_NO, MODE_NIGHT_FOLLOW_SYSTEM
+                    return true;
+                } else if (id == R.id.action_equalizer) {
+                    Toast.makeText(MainActivity.this, "Equalizer Clicked! (Navigate to Equalizer Activity/Fragment)", Toast.LENGTH_SHORT).show();
+                    return true;
+                } else if (id == R.id.action_about) {
+                    Toast.makeText(MainActivity.this, "About Clicked! (Show app info)", Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+                return false;
+            }
+        });
+        popup.show();
+    }
+
+    //endregion
 
     @Override
     protected void onStart() {
@@ -349,7 +461,10 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
         if (!isBound) {
             Intent musicServiceIntent = new Intent(this, MusicService.class);
             bindService(musicServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
-            startService(musicServiceIntent);
+            // We usually start the service in onCreate, but if it was stopped by the OS, this re-starts it.
+            // Consider starting it again here if you want it to always run in background after app launch.
+            // For now, it's started in onCreate and bound/re-bound here.
+            // startService(musicServiceIntent); // Uncomment if you want to ensure service starts on onStart too
         }
     }
 
@@ -357,6 +472,8 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
     protected void onStop() {
         super.onStop();
         if (isBound) {
+            // Unbind service. If the service is a foreground service, it will continue running.
+            // If it's not a foreground service and no other components are bound, it might stop.
             unbindService(serviceConnection);
             isBound = false;
         }
@@ -366,6 +483,8 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
     protected void onDestroy() {
         super.onDestroy();
         // Ensure service is stopped if activity is completely destroyed and music is not playing
+        // However, if music is playing, you might want the service to continue.
+        // A common pattern is to make the service a foreground service for playback.
         if (musicService != null && !musicService.isPlaying()) {
             stopService(new Intent(this, MusicService.class));
         }

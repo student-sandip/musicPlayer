@@ -5,50 +5,72 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#202020"
+    android:background="#121212"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/tv_header"
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/header_layout"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Gaane Suno"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        android:padding="16dp"
-        android:gravity="center"
-        android:textColor="@android:color/white"
-        android:background="#303030"
+        android:layout_height="?attr/actionBarSize" android:background="#1F1F1F"
+        android:elevation="4dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/tv_header_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Gaane Suno"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/white"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btn_settings_menu"
+            android:layout_width="?attr/actionBarSize"
+            android:layout_height="?attr/actionBarSize"
+            android:src="@drawable/ic_more_vert_white_24dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Settings and More Options"
+            app:tint="@android:color/white"
+            android:padding="16dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView_songs"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        app:layout_constraintTop_toBottomOf="@id/tv_header"
-        app:layout_constraintBottom_toTopOf="@id/playback_controls_layout"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:clipToPadding="false"
+        app:layout_constraintTop_toBottomOf="@id/header_layout" app:layout_constraintBottom_toTopOf="@id/playback_controls_layout"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/playback_controls_layout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:background="#303030"
-        android:gravity="center_horizontal"
+        android:background="#1F1F1F"
+        android:elevation="8dp"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="18dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
         <TextView
             android:id="@+id/tv_song_title"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="No song playing"
             android:textSize="20sp"
@@ -58,93 +80,143 @@
             android:singleLine="true"
             android:textColor="@android:color/white"
             android:gravity="center"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginBottom="4dp"/>
 
         <TextView
             android:id="@+id/tv_song_artist"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="Artist"
-            android:textSize="16sp"
-            android:textColor="#AAAAAA"
+            android:textSize="15sp"
+            android:textColor="#B3B3B3"
             android:singleLine="true"
             android:ellipsize="end"
             android:gravity="center"
-            android:layout_marginBottom="8dp"/>
+            app:layout_constraintTop_toBottomOf="@id/tv_song_title"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginBottom="12dp"/>
 
         <SeekBar
             android:id="@+id/seekbar_progress"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:progressTint="@color/design_default_color_primary"
-            android:thumbTint="@color/design_default_color_primary"
-            android:layout_marginBottom="8dp"/>
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:progressTint="#1DB954"
+            android:thumbTint="#1DB954"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_song_artist" />
+
+        <TextView
+            android:id="@+id/tv_current_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0:00"
+            android:textColor="#B3B3B3"
+            android:textSize="13sp"
+            app:layout_constraintTop_toBottomOf="@id/seekbar_progress"
+            app:layout_constraintStart_toStartOf="parent"/>
+
+        <TextView
+            android:id="@+id/tv_total_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0:00"
+            android:textColor="#B3B3B3"
+            android:textSize="13sp"
+            app:layout_constraintTop_toBottomOf="@id/seekbar_progress"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="8dp">
-
-            <TextView
-                android:id="@+id/tv_current_time"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0:00"
-                android:textColor="#AAAAAA"
-                android:textSize="14sp"/>
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1"/>
-
-            <TextView
-                android:id="@+id/tv_total_time"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0:00"
-                android:textColor="#AAAAAA"
-                android:textSize="14sp"/>
-        </LinearLayout>
-
-        <LinearLayout
+            android:id="@+id/main_playback_buttons"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:layout_marginTop="20dp"
+            app:layout_constraintTop_toBottomOf="@id/tv_current_time"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
             <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/btn_previous"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
                 android:src="@drawable/ic_skip_previous_white_24dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Previous Song"
-                app:tint="@android:color/white" />
+                app:tint="@android:color/white"
+                android:padding="12dp" />
 
             <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/btn_play_pause"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
+                android:layout_width="84dp"
+                android:layout_height="84dp"
                 android:src="@drawable/ic_play_arrow_white_24dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/circle_button_background"
                 android:contentDescription="Play/Pause"
-                android:layout_marginHorizontal="24dp"
-                app:tint="@android:color/white" />
+                android:layout_marginHorizontal="36dp"
+                app:tint="@android:color/white"
+                android:padding="16dp" />
 
             <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/btn_next"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
                 android:src="@drawable/ic_skip_next_white_24dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Next Song"
-                app:tint="@android:color/white" />
-
+                app:tint="@android:color/white"
+                android:padding="12dp" />
         </LinearLayout>
 
-    </LinearLayout>
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btn_shuffle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_shuffle_white_24dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Shuffle Playback"
+            app:tint="#B3B3B3"
+            android:padding="10dp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@id/main_playback_buttons"
+            app:layout_constraintBottom_toBottomOf="@id/main_playback_buttons"
+            app:layout_constraintVertical_bias="0.5" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btn_repeat"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_repeat_white_24dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Repeat Playback"
+            app:tint="#B3B3B3"
+            android:padding="10dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/main_playback_buttons"
+            app:layout_constraintBottom_toBottomOf="@id/main_playback_buttons"
+            app:layout_constraintVertical_bias="0.5" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btn_timer"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_timer_white_24dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Sleep Timer"
+            app:tint="#B3B3B3"
+            android:padding="8dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            android:layout_marginEnd="0dp"
+            android:layout_marginTop="0dp"/>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
