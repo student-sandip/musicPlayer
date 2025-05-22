@@ -482,9 +482,6 @@ public class MainActivity extends AppCompatActivity implements MusicService.OnSo
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Ensure service is stopped if activity is completely destroyed and music is not playing
-        // However, if music is playing, you might want the service to continue.
-        // A common pattern is to make the service a foreground service for playback.
         if (musicService != null && !musicService.isPlaying()) {
             stopService(new Intent(this, MusicService.class));
         }
