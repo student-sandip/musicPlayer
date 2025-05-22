@@ -7,31 +7,35 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
-import android.widget.Toast; // Added Toast import
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
-import androidx.media.app.NotificationCompat.MediaStyle; // Explicitly import MediaStyle
+import androidx.media.app.NotificationCompat.MediaStyle;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections; // Import for Collections.shuffle()
+import java.util.Collections;
 import java.util.List;
 
 public class MusicService extends Service implements MediaPlayer.OnCompletionListener,
         MediaPlayer.OnErrorListener, MediaPlayer.OnPreparedListener {
 
     private static final String TAG = "MusicService";
+
+    // Action Constants for Intents
     public static final String ACTION_PLAY = "com.example.gaanesuno.ACTION_PLAY";
     public static final String ACTION_PAUSE = "com.example.gaanesuno.ACTION_PAUSE";
     public static final String ACTION_NEXT = "com.example.gaanesuno.ACTION_NEXT";
     public static final String ACTION_PREVIOUS = "com.example.gaanesuno.ACTION_PREVIOUS";
+    public static final String ACTION_STOP = "com.example.gaanesuno.ACTION_STOP";
 
     // Constants for repeat mode
     public static final int REPEAT_OFF = 0;
@@ -39,33 +43,38 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     public static final int REPEAT_ONE = 2;
 
     private MediaPlayer mediaPlayer;
-    private List<Song> originalSongList; // Stores the original, ordered list of songs
-    private List<Song> activeSongList;   // The list currently used for playback (can be shuffled)
+    private List<Song> originalSongList;
+    private List<Song> activeSongList;
     private int currentSongIndex = -1;
-    private Song currentSong = null; // Store the actual Song object to handle shuffle changes
+    private Song currentSong = null;
 
     private boolean shuffleEnabled = false;
     private int repeatMode = REPEAT_OFF;
 
-    // Binder for clients to interact with the service
     private final IBinder musicBinder = new MusicBinder();
-
-    // Listener to inform MainActivity about song changes, play/pause status
     private OnSongChangedListener songChangedListener;
-
-    // Handler for updating seekbar
     private Handler handler = new Handler();
     private Runnable runnable;
 
-    // Notification Channel ID
     public static final String CHANNEL_ID = "GaaneSunoPlaybackChannel";
     public static final int NOTIFICATION_ID = 101;
+
+    // Flag for starting playback after preparing a newly selected song (from UI interaction)
+    private boolean shouldStartPlaybackOnPrepared = false;
+
+    // Fields to store pending restore state for onPrepared
+    private int pendingRestorePosition = 0; // Stores the seek position for restoration
+    private boolean pendingPlayOnRestore = false; // Stores if playback should resume on restore
+
+
+    // Flag to indicate if MediaPlayer is prepared and ready for playback/seeking
+    private boolean isMediaPlayerPreparedFlag = false;
 
 
     public interface OnSongChangedListener {
         void onSongChanged(Song song, boolean isPlaying);
         void onPlaybackStateChanged(boolean isPlaying);
-        void onProgressUpdate(int currentPosition, int duration); // Current position and total duration
+        void onProgressUpdate(int currentPosition, int duration);
     }
 
     public void setOnSongChangedListener(OnSongChangedListener listener) {
@@ -76,6 +85,12 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     public void onCreate() {
         super.onCreate();
         mediaPlayer = new MediaPlayer();
+        mediaPlayer.setAudioAttributes(
+                new AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+        );
         mediaPlayer.setOnCompletionListener(this);
         mediaPlayer.setOnErrorListener(this);
         mediaPlayer.setOnPreparedListener(this);
@@ -93,20 +108,17 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
 
     @Override
     public boolean onUnbind(Intent intent) {
-        // Stop updating seekbar when UI is unbinded
         stopSeekBarUpdates();
-        return true; // Allow rebind
+        return true;
     }
 
     @Override
     public void onRebind(Intent intent) {
         super.onRebind(intent);
-        // Restart seekbar updates when UI rebinds
         if (mediaPlayer != null && mediaPlayer.isPlaying()) {
             startSeekBarUpdates();
         }
     }
-
 
     public class MusicBinder extends Binder {
         MusicService getService() {
@@ -117,79 +129,93 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && intent.getAction() != null) {
+            Log.d(TAG, "Received action: " + intent.getAction());
             switch (intent.getAction()) {
                 case ACTION_PLAY:
-                    // If no song selected yet, and list is not empty, play the first one
-                    if (currentSongIndex == -1 && !activeSongList.isEmpty()) {
-                        playSong(0);
-                    } else if (mediaPlayer != null && !mediaPlayer.isPlaying()) {
-                        play();
+                    if (currentSong == null && !activeSongList.isEmpty()) {
+                        playSong(0); // If no song loaded, play the first
+                    } else {
+                        play(); // Otherwise, resume current song
                     }
                     break;
                 case ACTION_PAUSE:
-                    if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-                        pause();
-                    }
+                    pause();
                     break;
                 case ACTION_NEXT:
-                    playNextSong();
+                    playNextSong(); // Corrected: Call playNextSong
                     break;
                 case ACTION_PREVIOUS:
-                    playPreviousSong();
+                    playPreviousSong(); // Corrected: Call playPreviousSong
+                    break;
+                case ACTION_STOP:
+                    Log.d(TAG, "ACTION_STOP received. Stopping service.");
+                    stopPlaybackAndService();
                     break;
             }
         }
-        return START_STICKY; // Service will be restarted if killed
+        return START_NOT_STICKY;
     }
 
     public void setSongList(List<Song> songs) {
-        // Always store the original list order
+        if (songs == null || songs.isEmpty()) {
+            Log.w(TAG, "Attempted to set an empty or null song list.");
+            originalSongList.clear();
+            activeSongList.clear();
+            currentSong = null;
+            currentSongIndex = -1;
+            if (mediaPlayer != null) {
+                if (mediaPlayer.isPlaying()) mediaPlayer.stop();
+                mediaPlayer.reset();
+            }
+            isMediaPlayerPreparedFlag = false;
+            stopForeground(true);
+            if (songChangedListener != null) {
+                songChangedListener.onSongChanged(null, false);
+            }
+            return;
+        }
+
         this.originalSongList = new ArrayList<>(songs);
 
-        // Update active song list based on shuffle state
-        Song previouslyPlayingSong = null;
-        if (currentSong != null) {
-            previouslyPlayingSong = currentSong;
-        }
+        Song previouslyPlayingSong = currentSong;
 
-        this.activeSongList = new ArrayList<>(originalSongList); // Start with original order
+        this.activeSongList = new ArrayList<>(originalSongList);
         if (shuffleEnabled) {
-            Collections.shuffle(activeSongList); // Shuffle if shuffle is active
-        }
-
-        // If a song was playing, try to maintain its position in the new active list
-        if (previouslyPlayingSong != null) {
-            int newIndex = activeSongList.indexOf(previouslyPlayingSong);
-            if (newIndex != -1) {
-                currentSongIndex = newIndex;
-                currentSong = previouslyPlayingSong; // Keep the same song object
+            if (previouslyPlayingSong != null && activeSongList.contains(previouslyPlayingSong)) {
+                activeSongList.remove(previouslyPlayingSong);
+                Collections.shuffle(activeSongList);
+                activeSongList.add(0, previouslyPlayingSong);
+                currentSongIndex = 0;
             } else {
-                // Should not happen if the song is still in originalSongList
-                // But as a fallback, reset index or log error
-                Log.w(TAG, "Previously playing song not found in new active list after setSongList.");
-                currentSongIndex = -1; // No song selected
-                currentSong = null;
+                Collections.shuffle(activeSongList);
+                currentSongIndex = 0;
+                currentSong = activeSongList.isEmpty() ? null : activeSongList.get(currentSongIndex);
             }
         } else {
-            // If no song was playing, ensure index is valid if list is not empty
-            currentSongIndex = activeSongList.isEmpty() ? -1 : 0;
-            currentSong = activeSongList.isEmpty() ? null : activeSongList.get(currentSongIndex);
+            if (previouslyPlayingSong != null) {
+                int newIndex = activeSongList.indexOf(previouslyPlayingSong);
+                if (newIndex != -1) {
+                    currentSongIndex = newIndex;
+                    currentSong = previouslyPlayingSong;
+                } else {
+                    Log.w(TAG, "Previously playing song not found in new original list. Resetting current song.");
+                    currentSongIndex = -1;
+                    currentSong = null;
+                }
+            } else {
+                currentSongIndex = activeSongList.isEmpty() ? -1 : 0;
+                currentSong = activeSongList.isEmpty() ? null : activeSongList.get(currentSongIndex);
+            }
         }
 
-        Log.d(TAG, "Song list set in service. Original Size: " + originalSongList.size() + ", Active Size: " + activeSongList.size());
+        Log.d(TAG, "Song list set in service. Original Size: " + originalSongList.size() + ", Active Size: " + activeSongList.size() + ", Current Song Index: " + currentSongIndex);
     }
 
     public void playSong(int songIndex) {
         if (activeSongList.isEmpty() || songIndex < 0 || songIndex >= activeSongList.size()) {
             Log.e(TAG, "Invalid song index or empty list: " + songIndex);
             Toast.makeText(this, "No song available to play.", Toast.LENGTH_SHORT).show();
-            if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-                mediaPlayer.stop();
-            }
-            if (songChangedListener != null) {
-                songChangedListener.onSongChanged(null, false);
-            }
-            stopForeground(true); // Stop foreground if no song to play
+            stopPlaybackAndService();
             return;
         }
 
@@ -198,40 +224,136 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
         Log.d(TAG, "Attempting to play: " + currentSong.getTitle() + " at index: " + currentSongIndex);
 
         mediaPlayer.reset();
+        isMediaPlayerPreparedFlag = false; // Not prepared yet
+        shouldStartPlaybackOnPrepared = true; // This song should start playing after prepare
+        pendingPlayOnRestore = false; // Ensure this is false for new song selection
+        pendingRestorePosition = 0; // Always start from beginning for new song selection
+
         try {
             mediaPlayer.setDataSource(getApplicationContext(), currentSong.getData());
-            mediaPlayer.prepareAsync(); // Prepare asynchronously to avoid blocking UI
-            // onPrepared() will be called when ready to play
+            mediaPlayer.prepareAsync();
             if (songChangedListener != null) {
                 songChangedListener.onSongChanged(currentSong, false); // Inform UI song is preparing
             }
-            updateNotification(); // Update notification (e.g., loading state)
-        } catch (IOException e) {
-            Log.e(TAG, "Error setting data source: " + e.getMessage());
+            updateNotification();
+        } catch (IOException | IllegalStateException e) {
+            Log.e(TAG, "Error setting data source or preparing: " + e.getMessage());
             e.printStackTrace();
+            isMediaPlayerPreparedFlag = false;
             if (songChangedListener != null) {
-                songChangedListener.onSongChanged(null, false); // Inform UI about error
+                songChangedListener.onSongChanged(null, false);
             }
-            Toast.makeText(this, "Error playing song: " + e.getMessage(), Toast.LENGTH_SHORT).show(); // Show toast on error
+            Toast.makeText(this, "Error playing song: " + e.getMessage(), Toast.LENGTH_SHORT).show();
             playNextSong(); // Try playing the next song
+        }
+    }
+
+    /**
+     * Prepares a song for restoration from a saved state.
+     * @param song The song to prepare.
+     * @param index The index of the song in the active list.
+     * @param wasPlaying A flag indicating if the song was playing when the app was closed.
+     * @param restorePosition The position in milliseconds to seek to after preparation.
+     */
+    public void prepareSongForRestore(Song song, int index, boolean wasPlaying, int restorePosition) {
+        if (song == null || index < 0 || (activeSongList != null && index >= activeSongList.size())) {
+            Log.w(TAG, "Invalid song or index for restore preparation: " + (song != null ? song.getTitle() : "null") + ", Index: " + index);
+            if (mediaPlayer != null) {
+                if (mediaPlayer.isPlaying()) mediaPlayer.stop();
+                mediaPlayer.reset();
+            }
+            isMediaPlayerPreparedFlag = false;
+            shouldStartPlaybackOnPrepared = false;
+            pendingPlayOnRestore = false;
+            pendingRestorePosition = 0;
+            currentSong = null;
+            currentSongIndex = -1;
+            return;
+        }
+
+        this.currentSong = song;
+        this.currentSongIndex = index;
+        shouldStartPlaybackOnPrepared = false; // Not a new playback command from UI
+        pendingPlayOnRestore = wasPlaying; // Set based on saved state
+        pendingRestorePosition = restorePosition; // Store the restore position
+
+        mediaPlayer.reset();
+        isMediaPlayerPreparedFlag = false;
+
+        try {
+            mediaPlayer.setDataSource(getApplicationContext(), currentSong.getData());
+            mediaPlayer.prepareAsync();
+        } catch (IOException | IllegalStateException e) {
+            Log.e(TAG, "Error setting data source or preparing for restore: " + e.getMessage());
+            e.printStackTrace();
+            mediaPlayer.reset();
+            isMediaPlayerPreparedFlag = false;
+            pendingPlayOnRestore = false; // Reset if error
+            pendingRestorePosition = 0; // Reset if error
         }
     }
 
     @Override
     public void onPrepared(MediaPlayer mp) {
-        // MediaPlayer is prepared, start playing
-        play();
-    }
+        Log.d(TAG, "MediaPlayer prepared.");
+        isMediaPlayerPreparedFlag = true;
 
-    public void play() {
-        if (mediaPlayer != null) {
-            mediaPlayer.start();
+        // Apply seek position if it's a restore operation
+        if (pendingRestorePosition > 0) {
+            mp.seekTo(pendingRestorePosition);
+            Log.d(TAG, "Seeked to restored position: " + pendingRestorePosition);
+            pendingRestorePosition = 0; // Reset after use
+        }
+
+        // Determine if playback should start or resume
+        if (shouldStartPlaybackOnPrepared || pendingPlayOnRestore) {
+            mp.start();
             if (songChangedListener != null) {
                 songChangedListener.onPlaybackStateChanged(true);
             }
             startSeekBarUpdates();
             startForeground(NOTIFICATION_ID, createNotification());
-            Log.d(TAG, "Playing song: " + currentSong.getTitle());
+            Log.d(TAG, "Playback started after prepare (new song or resume).");
+        } else {
+            // Prepared but not starting playback (e.g., app just opened to last song but it was paused)
+            if (songChangedListener != null) {
+                songChangedListener.onPlaybackStateChanged(false);
+            }
+            updateNotification(); // Update notification to reflect paused state
+            Log.d(TAG, "MediaPlayer prepared, but not starting playback automatically (was paused).");
+        }
+        // Reset flags after use
+        shouldStartPlaybackOnPrepared = false;
+        pendingPlayOnRestore = false;
+
+        // Inform UI about song change (even if paused, to update title/artist)
+        if (songChangedListener != null) {
+            songChangedListener.onSongChanged(currentSong, isPlaying());
+        }
+    }
+
+    public void play() {
+        if (mediaPlayer != null && isMediaPlayerPreparedFlag) {
+            if (!mediaPlayer.isPlaying()) {
+                mediaPlayer.start();
+                if (songChangedListener != null) {
+                    songChangedListener.onPlaybackStateChanged(true);
+                }
+                startSeekBarUpdates();
+                startForeground(NOTIFICATION_ID, createNotification());
+                Log.d(TAG, "Resumed playing: " + (currentSong != null ? currentSong.getTitle() : "N/A"));
+            }
+        } else {
+            Log.w(TAG, "Cannot play: MediaPlayer is null or not prepared. Attempting to load last known song.");
+            // If play() is called but player isn't ready (e.g. initial start, or after error),
+            // attempt to load and play the last known song or first song.
+            if (currentSong != null && currentSongIndex != -1) {
+                playSong(currentSongIndex); // This will set shouldStartPlaybackOnPrepared to true
+            } else if (activeSongList != null && !activeSongList.isEmpty()) {
+                playSong(0); // This will set shouldStartPlaybackOnPrepared to true
+            } else {
+                Toast.makeText(this, "No songs to play.", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 
@@ -242,78 +364,30 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
                 songChangedListener.onPlaybackStateChanged(false);
             }
             stopSeekBarUpdates();
-            stopForeground(false); // Keep notification visible
-            updateNotification(); // Update notification with pause button
-            Log.d(TAG, "Paused song: " + currentSong.getTitle());
+            stopForeground(false); // Keep notification visible but remove foreground state
+            updateNotification();
+            Log.d(TAG, "Paused song: " + (currentSong != null ? currentSong.getTitle() : "N/A"));
+        } else {
+            Log.w(TAG, "Cannot pause: MediaPlayer is null or not playing.");
         }
-    }
-
-    public void playNextSong() {
-        if (activeSongList.isEmpty()) {
-            Log.d(TAG, "Active song list is empty, cannot play next song.");
-            return;
-        }
-
-        if (repeatMode == REPEAT_ONE) {
-            playSong(currentSongIndex); // Replay current song
-            return;
-        }
-
-        currentSongIndex++;
-        if (currentSongIndex >= activeSongList.size()) {
-            if (repeatMode == REPEAT_ALL) {
-                currentSongIndex = 0; // Loop back to start
-            } else {
-                // Stop playback at end of list if no repeat
-                mediaPlayer.stop();
-                currentSong = null;
-                currentSongIndex = -1; // Reset index
-                if (songChangedListener != null) {
-                    songChangedListener.onSongChanged(null, false);
-                }
-                stopForeground(true); // Remove notification
-                Toast.makeText(this, "Playback finished.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-        }
-        playSong(currentSongIndex);
-    }
-
-    public void playPreviousSong() {
-        if (activeSongList.isEmpty()) {
-            Log.d(TAG, "Active song list is empty, cannot play previous song.");
-            return;
-        }
-
-        if (repeatMode == REPEAT_ONE) {
-            playSong(currentSongIndex); // Replay current song
-            return;
-        }
-
-        currentSongIndex--;
-        if (currentSongIndex < 0) {
-            if (repeatMode == REPEAT_ALL) {
-                currentSongIndex = activeSongList.size() - 1; // Loop to end
-            } else {
-                // If at the beginning and not repeating all, just play the first song again
-                currentSongIndex = 0;
-            }
-        }
-        playSong(currentSongIndex);
     }
 
     public boolean isPlaying() {
         try {
-            return mediaPlayer != null && mediaPlayer.isPlaying();
+            return mediaPlayer != null && isMediaPlayerPreparedFlag && mediaPlayer.isPlaying();
         } catch (IllegalStateException e) {
             Log.e(TAG, "IllegalStateException in isPlaying: " + e.getMessage());
             return false;
         }
     }
 
+    public boolean isMediaPlayerPrepared() {
+        return isMediaPlayerPreparedFlag;
+    }
+
     public int getCurrentPosition() {
         try {
-            return mediaPlayer != null ? mediaPlayer.getCurrentPosition() : 0;
+            return mediaPlayer != null && isMediaPlayerPreparedFlag ? mediaPlayer.getCurrentPosition() : 0;
         } catch (IllegalStateException e) {
             Log.e(TAG, "IllegalStateException in getCurrentPosition: " + e.getMessage());
             return 0;
@@ -322,7 +396,7 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
 
     public int getDuration() {
         try {
-            return mediaPlayer != null && mediaPlayer.getDuration() > 0 ? mediaPlayer.getDuration() : 0;
+            return mediaPlayer != null && isMediaPlayerPreparedFlag ? mediaPlayer.getDuration() : 0;
         } catch (IllegalStateException e) {
             Log.e(TAG, "IllegalStateException in getDuration: " + e.getMessage());
             return 0;
@@ -330,69 +404,102 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     }
 
     public void seekTo(int position) {
-        if (mediaPlayer != null) {
+        if (mediaPlayer != null && isMediaPlayerPreparedFlag) {
             try {
                 mediaPlayer.seekTo(position);
+                Log.d(TAG, "Seeked to: " + position);
             } catch (IllegalStateException e) {
                 Log.e(TAG, "IllegalStateException in seekTo: " + e.getMessage());
             }
+        } else {
+            Log.w(TAG, "Cannot seek: MediaPlayer is null or not prepared.");
         }
     }
 
     public Song getCurrentSong() {
-        // Return the stored currentSong object, which is updated by playSong
         return currentSong;
     }
 
-    //region Shuffle and Repeat Logic
-    public void toggleShuffle() {
-        shuffleEnabled = !shuffleEnabled;
-        if (activeSongList.isEmpty()) {
-            Toast.makeText(this, "No songs to shuffle.", Toast.LENGTH_SHORT).show();
+    // Renamed from publicPlayNextSong for clarity since it's the internal logic.
+    // MainActivity should call this via service binder.
+    public void playNextSong() {
+        if (activeSongList == null || activeSongList.isEmpty()) {
+            stopPlaybackAndService();
             return;
         }
 
-        Song songToKeep = currentSong; // Remember the currently playing song
-
-        if (shuffleEnabled) {
-            // Shuffle the active list
-            Collections.shuffle(activeSongList);
-            Toast.makeText(this, "Shuffle ON", Toast.LENGTH_SHORT).show();
+        int nextIndex = currentSongIndex;
+        if (repeatMode == REPEAT_ONE) {
+            // Stay on the same song
         } else {
-            // Restore original order
-            activeSongList = new ArrayList<>(originalSongList);
-            Toast.makeText(this, "Shuffle OFF", Toast.LENGTH_SHORT).show();
+            nextIndex = (currentSongIndex + 1) % activeSongList.size();
+        }
+        playSong(nextIndex);
+    }
+
+    // Renamed from publicPlayPreviousSong for clarity.
+    public void playPreviousSong() {
+        if (activeSongList == null || activeSongList.isEmpty()) {
+            stopPlaybackAndService();
+            return;
         }
 
-        // Find the new index of the remembered song in the (re)ordered active list
-        if (songToKeep != null) {
-            int newIndex = activeSongList.indexOf(songToKeep);
-            if (newIndex != -1) {
-                currentSongIndex = newIndex;
+        int prevIndex = currentSongIndex;
+        if (repeatMode == REPEAT_ONE) {
+            // Stay on the same song
+        } else {
+            prevIndex = (currentSongIndex - 1 + activeSongList.size()) % activeSongList.size();
+        }
+        playSong(prevIndex);
+    }
+
+    public void toggleShuffle() {
+        setShuffle(!shuffleEnabled);
+    }
+
+    public void setShuffle(boolean enable) {
+        if (this.shuffleEnabled != enable) {
+            this.shuffleEnabled = enable;
+            Toast.makeText(this, "Shuffle " + (shuffleEnabled ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
+
+            Song songToKeep = currentSong; // Remember the song currently playing
+
+            if (shuffleEnabled) {
+                // When enabling shuffle, rebuild active list from original, then shuffle
+                activeSongList = new ArrayList<>(originalSongList);
+                if (songToKeep != null && activeSongList.contains(songToKeep)) {
+                    activeSongList.remove(songToKeep); // Remove current song temporarily
+                    Collections.shuffle(activeSongList); // Shuffle the rest
+                    activeSongList.add(0, songToKeep); // Add current song to the beginning
+                    currentSongIndex = 0; // Current song is now at index 0
+                } else {
+                    Collections.shuffle(activeSongList);
+                    currentSongIndex = 0; // Default to first song in new shuffled list
+                    currentSong = activeSongList.isEmpty() ? null : activeSongList.get(currentSongIndex);
+                }
             } else {
-                // This shouldn't happen if songToKeep was from originalSongList
-                // Fallback: if song not found, perhaps reset to start
-                currentSongIndex = 0;
-                currentSong = activeSongList.get(currentSongIndex);
-                if (isPlaying()) { // If playback was active, might need to restart current song at new index
-                    playSong(currentSongIndex);
-                } else { // Or just update UI state without playing
-                    if (songChangedListener != null) {
-                        songChangedListener.onSongChanged(currentSong, false);
+                // When disabling shuffle, revert to original order
+                activeSongList = new ArrayList<>(originalSongList);
+                if (songToKeep != null) {
+                    int newIndex = activeSongList.indexOf(songToKeep);
+                    if (newIndex != -1) {
+                        currentSongIndex = newIndex; // Find the current song's index in original list
+                    } else {
+                        Log.w(TAG, "Playing song not found in original list after unshuffle. Resetting index.");
+                        currentSongIndex = 0; // Fallback
+                        currentSong = activeSongList.isEmpty() ? null : activeSongList.get(currentSongIndex);
                     }
+                } else {
+                    currentSongIndex = 0; // Default to first song in original list
+                    currentSong = activeSongList.isEmpty() ? null : activeSongList.get(currentSongIndex);
                 }
             }
-        } else {
-            // If no song was playing, reset to beginning of the new active list
-            currentSongIndex = 0;
-            currentSong = activeSongList.get(currentSongIndex);
+            // Inform UI about song change (index might have changed, or song might be null)
             if (songChangedListener != null) {
-                songChangedListener.onSongChanged(currentSong, false); // Update UI with first song of new list
+                songChangedListener.onSongChanged(currentSong, isPlaying());
             }
+            updateNotification();
         }
-
-        // No need to restart playback just for shuffle/unshuffle, but ensure UI is updated
-        updateNotification(); // Re-issue notification if needed
     }
 
     public boolean isShuffleEnabled() {
@@ -400,7 +507,11 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     }
 
     public void toggleRepeat() {
-        repeatMode = (repeatMode + 1) % 3; // Cycles: 0 (OFF) -> 1 (ALL) -> 2 (ONE) -> 0 (OFF)
+        setRepeatMode((repeatMode + 1) % 3, true); // Cycle through 0, 1, 2
+    }
+
+    public void setRepeatMode(int mode, boolean showToast) {
+        this.repeatMode = mode;
         String toastText = "";
         switch (repeatMode) {
             case REPEAT_OFF:
@@ -413,27 +524,40 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
                 toastText = "Repeat ONE";
                 break;
         }
-        Toast.makeText(this, toastText, Toast.LENGTH_SHORT).show();
-        updateNotification(); // Re-issue notification if needed
+        if (showToast) {
+            Toast.makeText(this, toastText, Toast.LENGTH_SHORT).show();
+        }
+        updateNotification();
     }
 
     public int getRepeatMode() {
         return repeatMode;
     }
-    //endregion
 
-    //region SeekBar Updates
+    public List<Song> getActiveSongList() {
+        return activeSongList;
+    }
+
+    // These setters are generally not needed for external control if `playSong` is used.
+    // They are primarily for internal state management within the service or for initial setup.
+    public void setCurrentSong(Song song) {
+        this.currentSong = song;
+    }
+
+    public void setCurrentSongIndex(int index) {
+        this.currentSongIndex = index;
+    }
+
     private void startSeekBarUpdates() {
         if (runnable == null) {
             runnable = new Runnable() {
                 @Override
                 public void run() {
-                    if (mediaPlayer != null && mediaPlayer.isPlaying()) {
+                    if (mediaPlayer != null && mediaPlayer.isPlaying() && isMediaPlayerPreparedFlag) {
                         int currentPosition = mediaPlayer.getCurrentPosition();
                         int duration = mediaPlayer.getDuration();
                         if (songChangedListener != null) {
-                            // Check if duration is valid before updating
-                            if (duration > 0) {
+                            if (duration > 0) { // Avoid division by zero
                                 songChangedListener.onProgressUpdate(currentPosition, duration);
                             }
                         }
@@ -448,55 +572,92 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     private void stopSeekBarUpdates() {
         if (runnable != null) {
             handler.removeCallbacks(runnable);
-            runnable = null; // Reset runnable
+            runnable = null;
         }
     }
 
-
-    //region MediaPlayer Callbacks
     @Override
     public void onCompletion(MediaPlayer mp) {
         Log.d(TAG, "Song completed. Handling next song based on repeat mode.");
-        playNextSong(); // This will now handle repeat logic internally
+        if (repeatMode == REPEAT_ONE) {
+            playSong(currentSongIndex); // Replay current song
+        } else if (repeatMode == REPEAT_ALL) {
+            playNextSong(); // Play next song, looping to start if at end
+        } else { // REPEAT_OFF
+            if (currentSongIndex == activeSongList.size() - 1) {
+                // If it's the last song and repeat is off, stop playback
+                stopPlaybackAndService();
+                Toast.makeText(this, "Playback finished.", Toast.LENGTH_SHORT).show();
+            } else {
+                playNextSong(); // Play next song normally
+            }
+        }
     }
 
     @Override
     public boolean onError(MediaPlayer mp, int what, int extra) {
         Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
-        mp.reset(); // Resetting to recover from error
-        stopForeground(true); // Remove notification
+        mp.reset();
+        isMediaPlayerPreparedFlag = false;
+        shouldStartPlaybackOnPrepared = false; // Reset error state
+        pendingPlayOnRestore = false; // Reset error state
+        pendingRestorePosition = 0; // Reset error state
+
         if (songChangedListener != null) {
-            songChangedListener.onSongChanged(null, false); // Inform UI about error
+            songChangedListener.onSongChanged(null, false); // Inform UI about error/no song
         }
         Toast.makeText(this, "Error playing music. Skipping song.", Toast.LENGTH_SHORT).show();
-        playNextSong(); // Attempt to play next song
-        return true; // Indicate error was handled
+        playNextSong(); // Try playing the next song automatically
+        return true; // Indicate that the error was handled
     }
-    //endregion
 
+    private void stopPlaybackAndService() {
+        if (mediaPlayer != null) {
+            if (mediaPlayer.isPlaying()) mediaPlayer.stop();
+            mediaPlayer.reset();
+        }
+        isMediaPlayerPreparedFlag = false;
+        shouldStartPlaybackOnPrepared = false;
+        pendingPlayOnRestore = false;
+        pendingRestorePosition = 0;
+        currentSong = null;
+        currentSongIndex = -1;
+        stopSeekBarUpdates();
+        stopForeground(true); // Remove notification and stop foreground state
+        stopSelf(); // Stop the service itself
+        if (songChangedListener != null) {
+            songChangedListener.onSongChanged(null, false); // Clear UI song info
+            songChangedListener.onPlaybackStateChanged(false); // Update UI to paused state
+        }
+    }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         if (mediaPlayer != null) {
-            mediaPlayer.release();
+            mediaPlayer.release(); // Release MediaPlayer resources
             mediaPlayer = null;
         }
         stopSeekBarUpdates();
-        stopForeground(true);
-        Log.d(TAG, "MusicService destroyed.");
+        stopForeground(true); // Ensure notification is removed
+        Log.d(TAG, "MusicService onDestroy called.");
     }
 
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Log.d(TAG, "onTaskRemoved: App cleared from recents. Stopping service and releasing resources.");
+        stopPlaybackAndService(); // Stop everything when app is swiped away
+        super.onTaskRemoved(rootIntent);
+    }
 
-    // Notification Logic
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel serviceChannel = new NotificationChannel(
                     CHANNEL_ID,
                     "Music Playback",
-                    NotificationManager.IMPORTANCE_LOW // Use low importance to avoid constant sound/vibration
+                    NotificationManager.IMPORTANCE_LOW // Low importance so it doesn't make a sound/vibration
             );
-            serviceChannel.setDescription("Notification for music playback");
+            serviceChannel.setDescription("Controls for music playback");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(serviceChannel);
@@ -505,44 +666,62 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     }
 
     private Notification createNotification() {
-        // Use the currentSong object directly as it's maintained
         Song current = getCurrentSong();
-        String title = (current != null) ? current.getTitle() : "No Song";
+        String title = (current != null) ? current.getTitle() : "No Song Playing";
         String artist = (current != null) ? current.getArtist() : "Unknown Artist";
 
         Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.setAction(Intent.ACTION_MAIN);
+        notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+        // Flags to bring existing activity to front rather than creating new one
+        notificationIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent pendingIntent = PendingIntent.getActivity(this,
-                0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+                0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        // Intent for playback actions (Play/Pause, Next, Previous)
-        // Make sure actions are unique per PendingIntent with a unique request code
-        Intent playPauseIntent = new Intent(this, MusicService.class);
-        playPauseIntent.setAction(mediaPlayer != null && mediaPlayer.isPlaying() ? ACTION_PAUSE : ACTION_PLAY);
-        PendingIntent playPausePendingIntent = PendingIntent.getService(this, 1, playPauseIntent, PendingIntent.FLAG_IMMUTABLE);
+        // Action intents for notification buttons
+        PendingIntent playPausePendingIntent = PendingIntent.getService(this, 1,
+                new Intent(this, MusicService.class).setAction(isPlaying() ? ACTION_PAUSE : ACTION_PLAY),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Intent nextIntent = new Intent(this, MusicService.class).setAction(ACTION_NEXT);
-        PendingIntent nextPendingIntent = PendingIntent.getService(this, 2, nextIntent, PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent nextPendingIntent = PendingIntent.getService(this, 2,
+                new Intent(this, MusicService.class).setAction(ACTION_NEXT),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Intent previousIntent = new Intent(this, MusicService.class).setAction(ACTION_PREVIOUS);
-        PendingIntent previousPendingIntent = PendingIntent.getService(this, 3, previousIntent, PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent previousPendingIntent = PendingIntent.getService(this, 3,
+                new Intent(this, MusicService.class).setAction(ACTION_PREVIOUS),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        PendingIntent stopPendingIntent = PendingIntent.getService(this, 4,
+                new Intent(this, MusicService.class).setAction(ACTION_STOP),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(artist)
-                .setSmallIcon(R.drawable.ic_music_note_white_24dp) // You'll need to create this drawable
+                .setSmallIcon(R.drawable.ic_music_note_white_24dp)
                 .setContentIntent(pendingIntent)
-                .setPriority(NotificationCompat.PRIORITY_LOW) // Consistent with channel importance
-                .setOnlyAlertOnce(true) // Don't make sound/vibrate on updates
-                .addAction(android.R.drawable.ic_media_previous, "Previous", previousPendingIntent)
-                .addAction((mediaPlayer != null && mediaPlayer.isPlaying() ?
-                                android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play),
-                        (mediaPlayer != null && mediaPlayer.isPlaying() ? "Pause" : "Play"), playPausePendingIntent)
-                .addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-                .setStyle(new MediaStyle()
-                        .setShowActionsInCompactView(0, 1, 2) // Show previous, play/pause, next in compact view
-                        .setMediaSession(null)) // Set MediaSession token if you have one for lock screen controls
-                .setOngoing(mediaPlayer != null && mediaPlayer.isPlaying()); // Persistent if playing
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOnlyAlertOnce(true) // Notification will only alert once unless cleared/re-created
+                .setCategory(NotificationCompat.CATEGORY_TRANSPORT) // Categorize as media playback
+                .setOngoing(isPlaying()); // Make it ongoing if playing, dismissible if paused
+
+        MediaStyle mediaStyle = new MediaStyle()
+                // Show actions in compact view (index 0, 1, 2 = previous, play/pause, next)
+                .setShowActionsInCompactView(0, 1, 2)
+                .setMediaSession(null); // No MediaSessionToken for simplicity in this example
+
+        builder.setStyle(mediaStyle);
+
+        // Add actions (buttons) to the notification
+        builder.addAction(R.drawable.ic_skip_previous_white_24dp, "Previous", previousPendingIntent);
+        if (isPlaying()) {
+            builder.addAction(R.drawable.ic_pause_white_24dp, "Pause", playPausePendingIntent);
+        } else {
+            builder.addAction(R.drawable.ic_play_arrow_white_24dp, "Play", playPausePendingIntent);
+        }
+        builder.addAction(R.drawable.ic_skip_next_white_24dp, "Next", nextPendingIntent);
+        builder.addAction(R.drawable.ic_close_white_24dp, "Stop", stopPendingIntent);
 
         return builder.build();
     }
@@ -550,7 +729,16 @@ public class MusicService extends Service implements MediaPlayer.OnCompletionLis
     private void updateNotification() {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager != null) {
-            notificationManager.notify(NOTIFICATION_ID, createNotification());
+            // Use startForeground here to update an existing foreground notification.
+            // If the service is not yet foreground, it will become foreground.
+            // If it's already foreground, it will just update the notification.
+            if (isPlaying()) {
+                startForeground(NOTIFICATION_ID, createNotification());
+            } else {
+                // If paused, stop foreground but keep notification
+                stopForeground(false);
+                notificationManager.notify(NOTIFICATION_ID, createNotification());
+            }
         }
     }
 }
