@@ -1,0 +1,35 @@
+# gradle/libs.versions.toml
+
+[versions]
+agp = "8.10.0"
+junit = "4.13.2"
+junitVersion = "1.2.1"
+espressoCore = "3.6.1"
+appcompat = "1.7.0"
+material = "1.12.0"
+activity = "1.10.1" # Ensure this version is present
+constraintlayout = "2.2.1" # Ensure this version is present
+
+# --- ADD THESE NEW VERSIONS ---
+recyclerview = "1.3.2" # Current stable
+media = "1.7.0"        # Current stable (Crucial for MediaStyle)
+core-ktx = "1.13.1"    # Current stable
+# ------------------------------
+
+[libraries]
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
+constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+
+# --- ADD THESE NEW LIBRARIES ---
+recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
+media = { group = "androidx.media", name = "media", version.ref = "media" } # Crucial for MediaStyle
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+# -------------------------------
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
