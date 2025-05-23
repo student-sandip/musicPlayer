@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="128dp"
+    android:background="#2E2C2C"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/notification_album_art_expanded"
+        android:layout_width="61dp"
+        android:layout_height="70dp"
+        android:layout_marginEnd="16dp"
+        android:contentDescription="@string/album_art_description"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_music_note_white_24dp" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/notification_song_title_expanded"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:text="Long Song Title That Might Be Truncated"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/notification_song_artist_expanded"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Long Artist Name That Might Be Truncated"
+            android:textColor="#B3B3B3"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="186dp"
+        android:layout_height="110dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/notification_previous_expanded"
+            android:layout_width="44dp"
+            android:layout_height="39dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/previous_description"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_skip_previous_white_24dp"
+            app:tint="@android:color/white" />
+
+        <ImageButton
+            android:id="@+id/notification_play_pause_expanded"
+            android:layout_width="49dp"
+            android:layout_height="51dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/play_pause_description"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_play_arrow_white_24dp"
+            app:tint="@android:color/white" />
+
+        <ImageButton
+            android:id="@+id/notification_next_expanded"
+            android:layout_width="39dp"
+            android:layout_height="36dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/next_description"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_skip_next_white_24dp"
+            app:tint="@android:color/white" />
+
+        <ImageButton
+            android:id="@+id/notification_stop_expanded"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/stop_description"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_close_white_24dp"
+            app:tint="@android:color/white" />
+
+    </LinearLayout>
+</LinearLayout>

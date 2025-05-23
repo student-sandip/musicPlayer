@@ -66,12 +66,12 @@ public class MainActivity extends AppCompatActivity implements
     private final int COLOR_INACTIVE = 0xFFB3B3B3; // Light grey
 
     // SharedPreferences Keys for saving/restoring state
-    private static final String PREFS_NAME = "MusicAppPrefs";
-    private static final String KEY_LAST_SONG_ID = "lastSongId";
-    private static final String KEY_LAST_SONG_POSITION = "lastSongPosition"; // in milliseconds
-    private static final String KEY_WAS_PLAYING = "wasPlaying"; // true if it was playing when app closed
-    private static final String KEY_SHUFFLE_ENABLED = "shuffleEnabled";
-    private static final String KEY_REPEAT_MODE = "repeatMode";
+    public static final String PREFS_NAME = "MusicAppPrefs"; // Made public for MusicService
+    public static final String KEY_LAST_SONG_ID = "lastSongId"; // Made public for MusicService
+    public static final String KEY_LAST_SONG_POSITION = "lastSongPosition"; // Made public for MusicService
+    public static final String KEY_WAS_PLAYING = "wasPlaying"; // Made public for MusicService
+    public static final String KEY_SHUFFLE_ENABLED = "shuffleEnabled";
+    public static final String KEY_REPEAT_MODE = "repeatMode";
 
 
     @Override
@@ -236,8 +236,7 @@ public class MainActivity extends AppCompatActivity implements
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             long lastSongId = prefs.getLong(KEY_LAST_SONG_ID, -1L);
             int lastSongPositionMs = prefs.getInt(KEY_LAST_SONG_POSITION, 0);
-            // Retrieve the 'was playing' state to decide auto-resume
-            boolean wasPlaying = prefs.getBoolean(KEY_WAS_PLAYING, false);
+            boolean wasPlaying = prefs.getBoolean(KEY_WAS_PLAYING, false); // Retrieve the 'was playing' state
 
             Song lastSong = null;
             int lastSongIndex = RecyclerView.NO_POSITION;
@@ -255,7 +254,7 @@ public class MainActivity extends AppCompatActivity implements
 
             // Apply shuffle and repeat modes to the service without showing toast
             musicService.setShuffle(prefs.getBoolean(KEY_SHUFFLE_ENABLED, false));
-            musicService.setRepeatMode(prefs.getInt(KEY_REPEAT_MODE, MusicService.REPEAT_OFF), false); // Pass 'false' to prevent toast on app launch
+            musicService.setRepeatMode(prefs.getInt(KEY_REPEAT_MODE, MusicService.REPEAT_OFF), false);
 
 
             Song currentServiceSong = musicService.getCurrentSong();
@@ -266,12 +265,12 @@ public class MainActivity extends AppCompatActivity implements
 
             // >>>>>>> MODIFICATION FOR SMART RE-ENTRY (MINIMIZE vs. CLOSE) <<<<<<<
 
-            if (currentServiceSong != null && serviceIsPrepared &&
+            if (currentServiceSong != null && serviceIsPlaying && serviceIsPrepared &&
                     lastSong != null && currentServiceSong.getId() == lastSong.getId()) {
-                // Scenario 1: Service is already playing the *same* song and is prepared.
+                // Scenario 1: Service is already playing the *same* song, is prepared, and is playing.
                 // This indicates the app was minimized and the service continued playing.
                 // We want to reflect the current playing state of the service.
-                Log.d(TAG, "Service was playing same song. Updating UI to match service state.");
+                Log.d(TAG, "onServiceConnected: Service was playing same song. Updating UI to match service state.");
                 onSongChanged(currentServiceSong, serviceIsPlaying); // Update song info and playing state
                 onPlaybackStateChanged(serviceIsPlaying); // Update play/pause button
                 onProgressUpdate(serviceCurrentPosition, serviceDuration); // Update seekbar and time
@@ -279,15 +278,15 @@ public class MainActivity extends AppCompatActivity implements
                 seekBarProgress.setMax(serviceDuration);
                 seekBarProgress.setProgress(serviceCurrentPosition);
 
-                if (serviceIsPlaying) {
-                    startSeekBarUpdates(); // Ensure seekbar updates are running
-                }
+                startSeekBarUpdates(); // Ensure seekbar updates are running
 
             } else if (lastSong != null) {
                 // Scenario 2: No song playing, or a different song, or service not prepared.
                 // This is where 'wasPlaying' from SharedPreferences becomes crucial.
-                Log.d(TAG, "Service needs to prepare/load last known song. Using saved 'wasPlaying' state.");
+                Log.d(TAG, "onServiceConnected: Service needs to prepare/load last known song. Using saved 'wasPlaying' state (" + wasPlaying + ").");
+
                 // Pass the 'wasPlaying' preference to decide if it should play automatically
+                // The service will handle setting up the MediaPlayer based on this.
                 musicService.prepareSongForRestore(lastSong, lastSongIndex, wasPlaying, lastSongPositionMs);
 
                 // Immediately update UI with the song details. Playback state will be
@@ -296,15 +295,11 @@ public class MainActivity extends AppCompatActivity implements
                 onSongChanged(lastSong, wasPlaying); // Initial UI state should reflect 'wasPlaying'
                 onPlaybackStateChanged(wasPlaying); // Set play/pause button based on 'wasPlaying'
                 seekBarProgress.setMax((int)lastSong.getDuration()); // Set max for seekbar
-                seekBarProgress.setProgress(lastSongPositionMs); // Set initial progress
-
-                if (wasPlaying) {
-                    startSeekBarUpdates(); // Start if it's supposed to be playing
-                }
+                seekBarProgress.setProgress(lastSongPositionMs);
 
             } else {
                 // Scenario 3: No last song found or list is empty, reset UI
-                Log.d(TAG, "No last song found or list is empty. Resetting UI.");
+                Log.d(TAG, "onServiceConnected: No last song found or list is empty. Resetting UI.");
                 onSongChanged(null, false);
                 onPlaybackStateChanged(false); // Ensure play button is shown
             }
@@ -446,6 +441,7 @@ public class MainActivity extends AppCompatActivity implements
 
     @Override
     public void onPlaybackStateChanged(boolean isPlaying) {
+        Log.d(TAG, "onPlaybackStateChanged: isPlaying=" + isPlaying);
         if (isPlaying) {
             btnPlayPause.setImageResource(R.drawable.ic_pause_white_24dp);
             startSeekBarUpdates(); // Start updating seekbar only when playing
@@ -634,7 +630,7 @@ public class MainActivity extends AppCompatActivity implements
                 Toast.makeText(this, "On Android 11+, deletion requires explicit user confirmation via MediaStore.createDeleteRequest().", Toast.LENGTH_LONG).show();
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error deleting song: " + e.getMessage());
+            Log.e(TAG, "An unexpected error occurred during deletion: " + e.getMessage());
             Toast.makeText(this, "An unexpected error occurred during deletion: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
 
@@ -647,8 +643,9 @@ public class MainActivity extends AppCompatActivity implements
                 seekBarProgress.setProgress(0);
                 tvCurrentTime.setText("0:00");
                 songAdapter.setSelectedPosition(-1);
-                musicService.setCurrentSong(null); // Clear current song in service
-                musicService.setCurrentSongIndex(-1); // Clear current index in service
+                // The service itself needs to clear its current song and index
+                // You might need to add methods in MusicService for this, e.g., musicService.clearCurrentSong();
+                // For now, if current song is null, service will handle it.
             }
             songList.remove(position);
             songAdapter.updateSongList(songList);
@@ -667,10 +664,8 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     protected void onStart() {
         super.onStart();
+        Log.d(TAG, "MainActivity onStart.");
         // Re-bind to the service if it was unbound (e.g., app came from background)
-        // This is usually handled in onCreate, but onStart ensures it if onCreate wasn't called (e.g., activity recreated)
-        // However, given the current setup, onCreate's bindService is usually sufficient.
-        // The check 'if (!isBound)' is important.
         if (!isBound) {
             Intent musicServiceIntent = new Intent(this, MusicService.class);
             bindService(musicServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
@@ -679,6 +674,7 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     protected void onStop() {
         super.onStop();
+        Log.d(TAG, "MainActivity onStop.");
         // Save current playback state to SharedPreferences
         SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
         if (musicService != null && musicService.getCurrentSong() != null) {
@@ -688,11 +684,13 @@ public class MainActivity extends AppCompatActivity implements
             editor.putBoolean(KEY_WAS_PLAYING, musicService.isPlaying()); // <-- Saves actual state for minimization
             editor.putBoolean(KEY_SHUFFLE_ENABLED, musicService.isShuffleEnabled());
             editor.putInt(KEY_REPEAT_MODE, musicService.getRepeatMode());
+            Log.d(TAG, "MainActivity onStop: Saved wasPlaying: " + musicService.isPlaying());
         } else {
             // If no song is playing or service is null, clear saved state
             editor.remove(KEY_LAST_SONG_ID);
             editor.remove(KEY_LAST_SONG_POSITION);
             editor.remove(KEY_WAS_PLAYING); // Ensure this is also removed/cleared if no song
+            Log.d(TAG, "MainActivity onStop: No current song, cleared saved state.");
 
             editor.putBoolean(KEY_SHUFFLE_ENABLED, musicService != null && musicService.isShuffleEnabled());
             editor.putInt(KEY_REPEAT_MODE, musicService != null ? musicService.getRepeatMode() : MusicService.REPEAT_OFF);
@@ -710,12 +708,13 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        Log.d(TAG, "MainActivity onDestroy.");
         // If music is NOT playing when activity is destroyed, stop the service completely.
         // This prevents the service from lingering unnecessarily.
         if (musicService != null && !musicService.isPlaying()) {
+            Log.d(TAG, "MainActivity onDestroy: Music not playing, stopping service fully.");
             stopService(new Intent(this, MusicService.class));
             // When app is closed and music was paused, ensure next launch is also paused.
-            // (onStop already saved false, but good to be explicit here too if needed.)
             SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
             editor.putBoolean(KEY_WAS_PLAYING, false); // If service was not playing, explicitly save false
             editor.apply();

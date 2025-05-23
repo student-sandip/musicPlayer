@@ -32,6 +32,7 @@
         <service
             android:name=".MusicService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback" /> </application>
+            android:foregroundServiceType="mediaPlayback" />
+    </application>
 
 </manifest>

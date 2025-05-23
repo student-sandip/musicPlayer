@@ -37,8 +37,8 @@ public class Song {
         return data;
     }
 
-    public long getDuration() {
-        return duration;
+    public int getDuration() {
+        return (int) duration;
     }
 
     // NEW: Getter for the direct file path

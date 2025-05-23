@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">GaaneSuno</string>
+    <string name="album_art_description">Album Art</string>
+    <string name="previous_description">Previous Song</string>
+    <string name="play_pause_description">Play/Pause</string>
+    <string name="next_description">Next Song</string>
+    <string name="stop_description">Stop Playback</string>
 </resources>

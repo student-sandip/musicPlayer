@@ -43,6 +43,21 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent" />
 
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btn_timer"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Sleep Timer"
+            android:padding="8dp"
+            android:src="@drawable/ic_timer_white_24dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/tv_header_title"
+            app:layout_constraintHorizontal_bias="0.177"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="#B3B3B3" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <androidx.recyclerview.widget.RecyclerView
@@ -147,11 +162,11 @@
                 android:id="@+id/btn_previous"
                 android:layout_width="60dp"
                 android:layout_height="60dp"
-                android:src="@drawable/ic_skip_previous_white_24dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Previous Song"
-                app:tint="@android:color/white"
-                android:padding="12dp" />
+                android:padding="12dp"
+                android:src="@drawable/ic_skip_previous_white_24dp"
+                app:tint="@android:color/white" />
 
             <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/btn_play_pause"
@@ -160,7 +175,7 @@
                 android:src="@drawable/ic_play_arrow_white_24dp"
                 android:background="@drawable/circle_button_background"
                 android:contentDescription="Play/Pause"
-                android:layout_marginHorizontal="36dp"
+                android:layout_marginHorizontal="29dp"
                 app:tint="@android:color/white"
                 android:padding="16dp" />
 
@@ -168,11 +183,11 @@
                 android:id="@+id/btn_next"
                 android:layout_width="60dp"
                 android:layout_height="60dp"
-                android:src="@drawable/ic_skip_next_white_24dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Next Song"
-                app:tint="@android:color/white"
-                android:padding="12dp" />
+                android:padding="12dp"
+                android:src="@drawable/ic_skip_next_white_24dp"
+                app:tint="@android:color/white" />
         </LinearLayout>
 
         <androidx.appcompat.widget.AppCompatImageButton
@@ -202,20 +217,6 @@
             app:layout_constraintTop_toTopOf="@id/main_playback_buttons"
             app:layout_constraintBottom_toBottomOf="@id/main_playback_buttons"
             app:layout_constraintVertical_bias="0.5" />
-
-        <androidx.appcompat.widget.AppCompatImageButton
-            android:id="@+id/btn_timer"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_timer_white_24dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Sleep Timer"
-            app:tint="#B3B3B3"
-            android:padding="8dp"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            android:layout_marginEnd="0dp"
-            android:layout_marginTop="0dp"/>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
