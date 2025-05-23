@@ -12,4 +12,8 @@
     <color name="design_default_color_primary_dark">#3700B3</color>
     <color name="design_default_color_primary_variant">#3700B3</color>
     <color name="design_default_color_secondary">#03DAC6</color>
-</resources>
+
+
+    <color name="green_accent">#1DB954</color> <color name="grey_text">#B3B3B3</color>
+
+    </resources>

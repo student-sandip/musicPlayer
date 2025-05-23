@@ -30,6 +30,7 @@ import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatImageButton;
+import androidx.constraintlayout.widget.ConstraintLayout; // Import for ConstraintLayout
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
@@ -58,6 +59,7 @@ public class MainActivity extends AppCompatActivity implements
     private TextView tvSongTitle, tvSongArtist, tvCurrentTime, tvTotalTime;
     private AppCompatImageButton btnPlayPause, btnNext, btnPrevious, btnShuffle, btnRepeat, btnTimer, btnSettingsMenu;
     private SeekBar seekBarProgress;
+    private ConstraintLayout playbackControlsLayout; // Declare the layout for click listener
 
     private Handler handler = new Handler();
     private Runnable updateSeekBarRunnable;
@@ -66,10 +68,10 @@ public class MainActivity extends AppCompatActivity implements
     private final int COLOR_INACTIVE = 0xFFB3B3B3; // Light grey
 
     // SharedPreferences Keys for saving/restoring state
-    public static final String PREFS_NAME = "MusicAppPrefs"; // Made public for MusicService
-    public static final String KEY_LAST_SONG_ID = "lastSongId"; // Made public for MusicService
-    public static final String KEY_LAST_SONG_POSITION = "lastSongPosition"; // Made public for MusicService
-    public static final String KEY_WAS_PLAYING = "wasPlaying"; // Made public for MusicService
+    public static final String PREFS_NAME = "MusicAppPrefs";
+    public static final String KEY_LAST_SONG_ID = "lastSongId";
+    public static final String KEY_LAST_SONG_POSITION = "lastSongPosition";
+    public static final String KEY_WAS_PLAYING = "wasPlaying";
     public static final String KEY_SHUFFLE_ENABLED = "shuffleEnabled";
     public static final String KEY_REPEAT_MODE = "repeatMode";
 
@@ -80,6 +82,7 @@ public class MainActivity extends AppCompatActivity implements
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
 
+        // Initialize UI elements
         tvSongTitle = findViewById(R.id.tv_song_title);
         tvSongArtist = findViewById(R.id.tv_song_artist);
         tvCurrentTime = findViewById(R.id.tv_current_time);
@@ -93,6 +96,10 @@ public class MainActivity extends AppCompatActivity implements
         btnRepeat = findViewById(R.id.btn_repeat);
         btnTimer = findViewById(R.id.btn_timer);
         btnSettingsMenu = findViewById(R.id.btn_settings_menu);
+
+        // Initialize the playback controls layout for click listener
+        playbackControlsLayout = findViewById(R.id.playback_controls_layout);
+
 
         recyclerViewSongs = findViewById(R.id.recyclerView_songs);
         recyclerViewSongs.setLayoutManager(new LinearLayoutManager(this));
@@ -116,6 +123,7 @@ public class MainActivity extends AppCompatActivity implements
         bindService(musicServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
 
 
+        // --- Set up Listeners ---
         btnPlayPause.setOnClickListener(v -> {
             if (musicService == null) return;
             if (musicService.isPlaying()) {
@@ -201,6 +209,23 @@ public class MainActivity extends AppCompatActivity implements
                 }
             }
         });
+
+        // Add the click listener for the entire playback controls layout
+        playbackControlsLayout.setOnClickListener(v -> {
+            // Only open NowPlayingActivity if a song is currently loaded or service is active
+            if (musicService != null && (musicService.getCurrentSong() != null || musicService.isPlaying())) {
+                Intent intent = new Intent(MainActivity.this, NowPlayingActivity.class);
+                startActivity(intent);
+            } else {
+                // If no song is playing and no song loaded, give a hint
+                if (songList.isEmpty()) {
+                    Toast.makeText(MainActivity.this, "No songs found on your device.", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this, "Please select a song to play first.", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
 
         // Request permissions and load audio files
         if (checkPermissions()) {
@@ -661,6 +686,7 @@ public class MainActivity extends AppCompatActivity implements
             }
         }
     }
+
     @Override
     protected void onStart() {
         super.onStart();
@@ -671,63 +697,59 @@ public class MainActivity extends AppCompatActivity implements
             bindService(musicServiceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
         }
     }
+
     @Override
     protected void onStop() {
         super.onStop();
         Log.d(TAG, "MainActivity onStop.");
+
         // Save current playback state to SharedPreferences
         SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
-        if (musicService != null && musicService.getCurrentSong() != null) {
-            editor.putLong(KEY_LAST_SONG_ID, musicService.getCurrentSong().getId());
-            editor.putInt(KEY_LAST_SONG_POSITION, musicService.getCurrentPosition());
-            // Save the actual playing state when activity stops (minimize scenario)
-            editor.putBoolean(KEY_WAS_PLAYING, musicService.isPlaying()); // <-- Saves actual state for minimization
+        if (musicService != null) {
+            Song currentSong = musicService.getCurrentSong();
+            if (currentSong != null) {
+                editor.putLong(KEY_LAST_SONG_ID, currentSong.getId());
+                editor.putInt(KEY_LAST_SONG_POSITION, musicService.getCurrentPosition());
+                editor.putBoolean(KEY_WAS_PLAYING, musicService.isPlaying()); // Save if it was playing
+            } else {
+                // If no song is playing, clear last song info
+                editor.remove(KEY_LAST_SONG_ID);
+                editor.remove(KEY_LAST_SONG_POSITION);
+                editor.putBoolean(KEY_WAS_PLAYING, false); // Explicitly set to false
+            }
             editor.putBoolean(KEY_SHUFFLE_ENABLED, musicService.isShuffleEnabled());
             editor.putInt(KEY_REPEAT_MODE, musicService.getRepeatMode());
-            Log.d(TAG, "MainActivity onStop: Saved wasPlaying: " + musicService.isPlaying());
         } else {
-            // If no song is playing or service is null, clear saved state
+            // If service is null (e.g., not bound or destroyed), assume no playback state
             editor.remove(KEY_LAST_SONG_ID);
             editor.remove(KEY_LAST_SONG_POSITION);
-            editor.remove(KEY_WAS_PLAYING); // Ensure this is also removed/cleared if no song
-            Log.d(TAG, "MainActivity onStop: No current song, cleared saved state.");
-
-            editor.putBoolean(KEY_SHUFFLE_ENABLED, musicService != null && musicService.isShuffleEnabled());
-            editor.putInt(KEY_REPEAT_MODE, musicService != null ? musicService.getRepeatMode() : MusicService.REPEAT_OFF);
+            editor.putBoolean(KEY_WAS_PLAYING, false);
+            editor.putBoolean(KEY_SHUFFLE_ENABLED, false);
+            editor.putInt(KEY_REPEAT_MODE, MusicService.REPEAT_OFF);
         }
         editor.apply();
 
-        // Unbind the service when activity stops to prevent memory leaks.
-        // The service itself might continue running if it's a foreground service and playing music.
+        // Unbind from the service to avoid Activity leaks if it's not needed in background.
+        // If the service is a foreground service, it will continue running anyway.
         if (isBound) {
+            musicService.setOnSongChangedListener(null); // Crucial to prevent leaks
             unbindService(serviceConnection);
             isBound = false;
+            Log.d(TAG, "MainActivity onStop: Unbinding service.");
         }
+        handler.removeCallbacks(updateSeekBarRunnable); // Stop updates
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "MainActivity onDestroy.");
-        // If music is NOT playing when activity is destroyed, stop the service completely.
-        // This prevents the service from lingering unnecessarily.
-        if (musicService != null && !musicService.isPlaying()) {
-            Log.d(TAG, "MainActivity onDestroy: Music not playing, stopping service fully.");
-            stopService(new Intent(this, MusicService.class));
-            // When app is closed and music was paused, ensure next launch is also paused.
-            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
-            editor.putBoolean(KEY_WAS_PLAYING, false); // If service was not playing, explicitly save false
-            editor.apply();
-        } else if (musicService != null && musicService.isPlaying()) {
-            // This case means the app UI is being destroyed, but the service is still playing
-            // (e.g., user swiped away from recents but foreground service is still active).
-            // For the *next* launch, we want it to be paused, regardless of onStop's saved state.
-            Log.d(TAG, "MainActivity onDestroy: Service still playing. Forcing WAS_PLAYING to false for next launch.");
-            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
-            editor.putBoolean(KEY_WAS_PLAYING, false); // <-- THIS IS KEY for "closed = paused" behavior
-            editor.apply();
+        // Make sure to unbind service and remove callbacks if not already done in onStop
+        if (isBound) {
+            musicService.setOnSongChangedListener(null);
+            unbindService(serviceConnection);
+            isBound = false;
         }
-        // Always remove callbacks to prevent memory leaks from the handler
         handler.removeCallbacks(updateSeekBarRunnable);
     }
 }

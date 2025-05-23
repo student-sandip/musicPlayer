@@ -156,9 +156,6 @@ public class MusicService extends Service implements
                 // Add more actions if needed (e.g., from external sources)
             }
         }
-        // START_STICKY means if the system kills the service, it will recreate it
-        // but without redelivering the last intent. Useful for services that
-        // run indefinitely and handle their own state.
         return START_STICKY;
     }
 
